@@ -1,0 +1,5 @@
+{
+  "autologout": "Plugin AutoCierreSesion",
+  "downtime": "Tiempo (en minutos)",
+  "downtimedescription": "Tiempo máximo de inactividad antes de cerrar la sesión (en minutos)."
+}

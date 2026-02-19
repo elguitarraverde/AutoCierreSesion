@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<view>
+    <columns>
+        <group name="data" numcolumns="12">
+            <column name="name" display="none" order="0">
+                <widget type="text" fieldname="name" readonly="true" required="true" />
+            </column>
+
+            <column name="downtime" title="downtime" description="downtimedescription" numcolumns="2" order="110">
+                <widget type="number" decimal="0" min="0" step="1" fieldname="downtime" required="true"/>
+            </column>
+        </group>
+    </columns>
+</view>

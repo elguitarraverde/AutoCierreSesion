@@ -1,0 +1,135 @@
+<script>
+    /**
+     * Módulo de cierre de sesión automático por inactividad del usuario.
+     *
+     * Detecta la actividad del usuario mediante eventos del navegador y reinicia
+     * un contador regresivo. Si el usuario permanece inactivo durante el tiempo
+     * definido en IDLE_TIMEOUT_MS, se redirige automáticamente a la URL de logout.
+     *
+     * Utiliza BroadcastChannel para sincronizar tanto la actividad como el cierre
+     * de sesión entre todas las pestañas abiertas de la aplicación.
+     */
+
+    /**
+     * Tiempo máximo de inactividad antes de cerrar la sesión (en milisegundos).
+     * El valor en minutos se obtiene desde la configuración en el panel de control,
+     * usando 15 minutos como valor por defecto si no está definido.
+     */
+    const IDLE_TIMEOUT_MS = parseInt("{{ settings('autologout', 'downtime', 15) }}") * 60 * 1000;
+
+    /**
+     * Referencia al identificador del temporizador activo.
+     * Se reutiliza para cancelar y reiniciar el contador en cada interacción del usuario.
+     *
+     * @type {number|undefined}
+     */
+    let idleTimer;
+
+    /**
+     * Canal de comunicación entre pestañas del mismo origen.
+     * Gestiona dos tipos de mensajes:
+     *   - 'activity': notifica que el usuario ha interactuado en alguna pestaña.
+     *   - 'logout': notifica que la sesión ha expirado y todas deben cerrar sesión.
+     */
+    const sessionChannel = new BroadcastChannel('session_idle');
+
+    /**
+     * Construye y devuelve la URL completa de logout como cadena de texto.
+     *
+     * Combina el origen actual del navegador con la ruta base de la aplicación
+     * (inyectada por el servidor), añade el segmento '/login' y adjunta los
+     * parámetros necesarios para ejecutar el cierre de sesión.
+     *
+     * @returns {string} URL de logout lista para asignar a window.location.href.
+     */
+    const getLogoutUrl = () => {
+        const origin = window.location.origin;
+        const basePath = "{{ constant('FS_ROUTE') }}";
+        const logoutUrl = new URL(origin + basePath + '/login');
+        logoutUrl.searchParams.set('action', 'logout');
+        logoutUrl.searchParams.set('multireqtoken', '{{ formToken(false) }}');
+        return logoutUrl.href;
+    };
+
+    /**
+     * Ejecuta el cierre de sesión en la pestaña actual.
+     * Redirige al usuario a la URL de logout generada por el servidor.
+     */
+    const doLogout = () => {
+        console.log("Sesión cerrada por inactividad");
+        window.location.href = getLogoutUrl();
+    };
+
+    /**
+     * Cancela el temporizador de inactividad actual y arranca uno nuevo.
+     *
+     * Acepta un parámetro para controlar si se debe notificar al canal,
+     * evitando así que las pestañas que reciben un mensaje 'activity' del canal
+     * vuelvan a emitir otro, lo que generaría un bucle infinito de mensajes.
+     *
+     * @param {boolean} [broadcast=true] - Si es true, notifica al canal que hubo actividad.
+     */
+    const resetIdleTimer = (broadcast = true) => {
+        clearTimeout(idleTimer);
+
+        /*
+         * Notificamos al canal solo si la actividad fue generada localmente
+         * por el usuario, no si fue recibida desde otra pestaña.
+         */
+        if (broadcast) {
+            sessionChannel.postMessage('activity');
+        }
+
+        idleTimer = setTimeout(() => {
+            /*
+             * Notificamos a todas las pestañas abiertas para que también
+             * cierren sesión de forma coordinada antes de redirigir esta.
+             */
+            sessionChannel.postMessage('logout');
+            doLogout();
+        }, IDLE_TIMEOUT_MS);
+    };
+
+    /**
+     * Escuchamos mensajes entrantes desde otras pestañas.
+     *
+     * - 'activity': otra pestaña detectó actividad del usuario, reiniciamos
+     *               nuestro timer local sin volver a emitir al canal (broadcast=false).
+     * - 'logout': otra pestaña detectó inactividad, cerramos sesión en esta también.
+     */
+    sessionChannel.addEventListener('message', (event) => {
+        if (event.data === 'activity') {
+            resetIdleTimer(false);
+        }
+
+        if (event.data === 'logout') {
+            doLogout();
+        }
+    });
+
+    /**
+     * Lista de eventos de usuario que se consideran señal de actividad.
+     *
+     * Cualquiera de estos eventos reiniciará el temporizador de inactividad.
+     * Se usa la fase de captura (tercer argumento: true) para detectar
+     * los eventos incluso en elementos que puedan detener la propagación.
+     */
+    const ACTIVITY_EVENTS = [
+        'mousedown',
+        'mousemove',
+        'keypress',
+        'scroll',
+        'touchstart',
+    ];
+
+    ACTIVITY_EVENTS.forEach((eventName) => {
+        document.addEventListener(eventName, resetIdleTimer, true);
+    });
+
+    /*
+     * Iniciamos el temporizador al cargar el script, de forma que la sesión
+     * se cierre aunque el usuario no interactúe en ningún momento con la página.
+     * No emitimos al canal en este punto ya que es la carga inicial de la pestaña.
+     */
+    resetIdleTimer(false);
+</script>
