@@ -12,10 +12,14 @@
 
     /**
      * Tiempo máximo de inactividad antes de cerrar la sesión (en milisegundos).
-     * El valor en minutos se obtiene desde la configuración en el panel de control,
-     * usando 15 minutos como valor por defecto si no está definido.
+     * Se obtiene de la configuración, usando 15 como fallback si es null/undefined.
+     * Se asegura un mínimo de 1 minuto para evitar errores de ejecución.
      */
-    const IDLE_TIMEOUT_MS = parseInt("{{ settings('autologout', 'downtime', 15) }}") * 60 * 1000;
+    const rawValue = parseInt("{{ settings('autologout', 'downtime', 15) }}");
+
+    // Math.max(1, ...) asegura que si el valor es 0 o menor, se convierta en 1.
+    // Si el valor es NaN (por error de parsing), usamos el fallback de 15.
+    const IDLE_TIMEOUT_MS = (Math.max(1, rawValue) || 15) * 60 * 1000;
 
     /**
      * Referencia al identificador del temporizador activo.
